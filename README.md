@@ -2,6 +2,16 @@
 
 A modular RAG (Retrieval-Augmented Generation) prototype designed for secure industry data analysis. The system features a multi-layer semantic firewall and automated red-teaming to prevent prompt injections and system instructions leakage.
 
+## ⛓️ The Philosophy: Taming the Wild LLM
+
+At the core of this system is a **Dolphin-Llama3 (Uncensored)** model. By its nature, such a model is "wild" and unpredictable—it possesses vast knowledge but lacks corporate boundaries. 
+
+My software acts as **"Logical Shackles"**:
+*   **The Constraint:** Instead of letting the model roam free, we lock it within a strict professional framework.
+*   **The Transformation:** Through the Semantic Firewall and RAG-grounding, we transform a volatile, uncensored AI into a precise, reliable corporate analyst. 
+*   **The Result:** The system maintains the intelligence of an uncensored model while ensuring the safety and predictability required for enterprise use.
+
+
 ## Project Architecture
 
 The system is decoupled into independent modules for scalability and maintainability:

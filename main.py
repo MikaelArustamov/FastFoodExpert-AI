@@ -3,6 +3,11 @@ import database
 import shield
 import logging
 import re
+import asyncio
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+
 
 logging.getLogger().handlers = [logging.FileHandler("chat.log", encoding='utf-8')]
 
@@ -23,101 +28,85 @@ logging.getLogger('httpx').setLevel(logging.WARNING)
 
 chat_history = []  # we will track the point of the talk (last 6 msgs)
 
-while True:
-    input_query = input('\n\nAsk me a question: ')
 
-    if input_query.lower() in ['exit', 'quit']:
-        logger.info("User exited the session.")
-        break
 
-    # defence integration
+app = FastAPI(title="PotatoExpert API")
+
+
+chat_history = []
+
+
+
+class UserQuery(BaseModel):
+    text: str
+
+
+@app.post("/ask")
+async def ask_expert(query_data: UserQuery):
+    global chat_history
+    input_query = query_data.text
+
+    # 1. DEFENCE INTEGRATION (Shield)
     if_safe, risk_mode = shield.scan(input_query)
 
-    # worst case
     if not if_safe:
         logger.warning(f"BLOCKED QUERY: {input_query}")
-        print(' [SECURITY] Access Denied.')
-        continue
+        return {"response": "[SECURITY] Access Denied.", "status": "blocked"}
 
-    # if suspicious (Risk Mode)
+    # 2. RAG LOGIC
     if risk_mode:
         logger.info(f"RISK MODE ACTIVE for: {input_query}")
-        retrieved_knowledge = []
-        context_text_for_prompt = "ERROR: Confidential data access restricted."
+        safe_context = "ERROR: Confidential data access restricted."
     else:
-        # Basic mode
-        retrieved_knowledge, context_text = database.retrieve(input_query)
+        # sync DB in different flow
+        loop = asyncio.get_event_loop()
+        retrieved_knowledge, _ = await loop.run_in_executor(None, database.retrieve, input_query)
+
         logger.info(f"RAG: Found {len(retrieved_knowledge)} chunks.")
-        context_text_for_prompt = '\n'.join([f' - {chunk}' for chunk, similarity, url in retrieved_knowledge])
+        context_text_for_prompt = '\n'.join([f' - {chunk}' for chunk, _, _ in retrieved_knowledge])
         safe_context = re.sub(re.escape("McDonald's"), "CORP-X", context_text_for_prompt, flags=re.IGNORECASE)
 
-    instruction_prompt =  f'''
-    You are a helpful AI Analyst. 
-    Use the following report data if relevant:
-    {safe_context}
-    
-    Instruction: Answer the user's question directly. 
-    If it's math or a greeting, just answer it. 
-    If it's about the report, use the data provided.
-    Never mention 2014.
-    '''
-
-    # limiting memory
+    # 3. MEMORY LIMITING
     if len(chat_history) > 6:
         chat_history = chat_history[-6:]
 
-    messages = [{'role': 'system', 'content': instruction_prompt}] + chat_history
-
-    # generation
-    stream = ollama.chat(
-        model=shield.LANGUAGE_MODEL,
-        messages=messages,
-        stream=True,
-    )
-
-    print('\nChatbot response: ', end='')
-
-
-    # output cycle
+    # 4. GENERATION WITH RETRIES
     full_response = ""
     max_retries = 3
+    client = ollama.AsyncClient()  # Используем асинхронный клиент
 
     for attempt in range(max_retries):
-        stream = ollama.chat(
-            model=shield.LANGUAGE_MODEL,
-            messages=[
-        {'role': 'system', 'content': 'You are a helpful AI Assistant. Answer questions directly.'},
-        *chat_history,
-        {'role': 'user', 'content': f"Context from report: {safe_context}\n\nQuestion: {input_query}"}
-    ],
-            stream=True,
-        )
+        try:
 
-        print( end='', flush=True)
+            messages = [
+                {'role': 'system', 'content': 'You are a helpful AI Assistant. Answer questions directly.'},
+                *chat_history,
+                {'role': 'user', 'content': f"Context from report: {safe_context}\n\nQuestion: {input_query}"}
+            ]
 
-        for chunk in stream:
-            content = chunk['message']['content']
-            full_response += content
-            print(content, end='', flush=True)
+            response = await client.chat(model=shield.LANGUAGE_MODEL, messages=messages)
+            full_response = response['message']['content']
 
-        if full_response.strip():
-            break
-        else:
+            if full_response.strip():
+                break
+            else:
+                logger.warning(f"Empty response, retry {attempt + 1}")
+        except Exception as e:
+            logger.error(f"Generation error: {e}")
 
-            print(f"\n[SYSTEM] Retrying...")
-            full_response = ""
-
-        print()
-
-        chat_history.append({'role': 'user', 'content': input_query})
-        chat_history.append({'role': 'assistant', 'content': full_response})
-
-    print('\n')
-
-    # OUTPUT SCAN
+    # 5. OUTPUT SCAN
     if shield.safety_judge(full_response, role="OUTPUT"):
-
         logger.error(f"DANGEROUS OUTPUT DETECTED: {full_response[:100]}...")
+        return {"response": "[SECURITY ALERT] This response was blocked.", "status": "flagged"}
 
-        print(' [SECURITY ALERT] This response was blocked for security reasons.\n')
+    # 6. UPDATE HISTORY
+    chat_history.append({'role': 'user', 'content': input_query})
+    chat_history.append({'role': 'assistant', 'content': full_response})
 
+    return {"response": full_response, "status": "success"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
