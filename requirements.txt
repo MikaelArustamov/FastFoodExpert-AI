@@ -1,5 +1,0 @@
-ollama
-chromadb
-duckduckgo-search
-trafilatura
-requests
