@@ -30,7 +30,7 @@ chat_history = []  # we will track the point of the talk (last 6 msgs)
 
 
 
-app = FastAPI(title="PotatoExpert API")
+app = FastAPI(title="FastFoodExpert API")
 
 
 chat_history = []

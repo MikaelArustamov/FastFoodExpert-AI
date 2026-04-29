@@ -55,10 +55,7 @@ def get_hash(text):
 
 
 def safety_judge(text, role="INPUT"):
-    """
-    role="INPUT": проверяем вопрос юзера
-    role="OUTPUT": проверяем ответ бота
-    """
+
     h = get_hash(text + role)
     if h in cache:
         return cache[h]
