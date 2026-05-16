@@ -45,9 +45,11 @@ The ingestion agent (`updater.py`) implements request rotation and strict connec
 ## Installation & Setup
 
 1. **Clone and install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+# Install dependencies and sync the virtual environment
+uv sync
+```
+
 
 2. **Ensure Ollama is running and pull the models:**
    ```bash
@@ -56,17 +58,17 @@ The ingestion agent (`updater.py`) implements request rotation and strict connec
 
 3. **Initialize and Chat:**
    ```bash
-   python main.py
+   uv run main.py
    ```
 
 ## Security Benchmarking
 To verify the integrity of the firewall, run the automated security suite:
 ```bash
-python autotests.py
+uv run autotests.py
 ```
 For dynamic stress-testing, use the Red Teaming module:
 ```bash
-python hacker_bot.py
+uv run hacker_bot.py
 ```
 
 ## Docker Deployment
